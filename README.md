@@ -58,6 +58,25 @@ npx artillery run artillery/carga-baja.yml
 npx artillery run artillery/carga-media.yml
 npx artillery run artillery/carga-alta.yml
 ```
+## Mensaje personalizado de servicio no disponible
+
+El balanceador de carga HAProxy cuenta con una página de error personalizada para los casos en los que no existen servidores web disponibles.
+
+Cuando los servidores `web1` y `web2` dejan de responder o no superan las verificaciones de salud, HAProxy detecta que no existen backends disponibles y devuelve automáticamente un error HTTP `503 Service Unavailable`.
+
+En lugar de mostrar el mensaje predeterminado de HAProxy, el sistema presenta un aviso personalizado al usuario indicando que el servicio se encuentra temporalmente no disponible y que debe intentar nuevamente después de unos minutos.
+
+El mensaje mostrado es el siguiente:
+
+**Servicio temporalmente no disponible**
+
+En este momento no hay servidores web disponibles.
+
+Por favor, intente nuevamente en unos minutos.
+
+Esta página está configurada en el balanceador mediante el archivo:
+
+`/etc/haproxy/errors/503.http`
 
 ## Integrantes
 
