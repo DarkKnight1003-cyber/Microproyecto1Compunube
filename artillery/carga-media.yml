@@ -1,0 +1,12 @@
+﻿config:
+  target: "http://192.168.56.13"
+  phases:
+    - duration: 30
+      arrivalRate: 20
+      name: "Carga media"
+
+scenarios:
+  - name: "Pagina principal"
+    flow:
+      - get:
+          url: "/"
