@@ -80,7 +80,7 @@ chown -R consul:consul /etc/consul.d
 chown -R consul:consul /opt/consul
 
 # ----------------------------------
-# 6. Corregir Type=notify
+# 6. Corregir Type=notify de Consul
 # ----------------------------------
 mkdir -p /etc/systemd/system/consul.service.d
 
@@ -95,13 +95,15 @@ systemctl enable consul
 systemctl restart consul
 
 # ----------------------------------
-# 7. Esperar a que Consul responda
+# 7. Esperar conexion con Consul
 # ----------------------------------
 echo "Esperando conexion con Consul..."
 
 for i in {1..30}; do
 
-    if curl -s http://127.0.0.1:8500/v1/status/leader | grep -q "192.168.56.11"; then
+    if curl -s http://127.0.0.1:8500/v1/status/leader \
+        | grep -q "192.168.56.11"; then
+
         echo "Consul conectado correctamente."
         break
     fi
@@ -147,7 +149,7 @@ Content-Type: text/html; charset=UTF-8
 EOF
 
 # ----------------------------------
-# 9. Crear plantilla HAProxy
+# 9. Crear plantilla de HAProxy
 # ----------------------------------
 mkdir -p /etc/consul-template
 
@@ -203,8 +205,10 @@ for i in {1..30}; do
         http://127.0.0.1:8500/v1/health/service/web?passing=true)
 
     if echo "$SERVICIOS" | grep -q "web1-3000"; then
+
         echo "Servicios web encontrados."
         break
+
     fi
 
     sleep 2
@@ -212,9 +216,11 @@ for i in {1..30}; do
 done
 
 # ----------------------------------
-# 11. Generar configuracion HAProxy
+# 11. Generar configuracion inicial
+#     de HAProxy
 # ----------------------------------
 consul-template -once \
+    -consul-addr=127.0.0.1:8500 \
     -template="/etc/consul-template/haproxy.ctmpl:/etc/haproxy/haproxy.cfg"
 
 # ----------------------------------
@@ -228,10 +234,84 @@ haproxy -c -f /etc/haproxy/haproxy.cfg
 systemctl enable haproxy
 systemctl restart haproxy
 
+# ----------------------------------
+# 14. Crear script seguro para
+#     recargar HAProxy
+# ----------------------------------
+cat > /usr/local/bin/reload-haproxy.sh <<'EOF'
+#!/bin/bash
+
+if /usr/sbin/haproxy -c -f /etc/haproxy/haproxy.cfg; then
+
+    /usr/bin/systemctl reload haproxy
+
+else
+
+    echo "ERROR: configuracion HAProxy invalida."
+    exit 1
+
+fi
+EOF
+
+chmod +x /usr/local/bin/reload-haproxy.sh
+
+# ----------------------------------
+# 15. Servicio permanente
+#     de consul-template
+# ----------------------------------
+cat > /etc/systemd/system/consul-template.service <<'EOF'
+[Unit]
+Description=Consul Template para HAProxy
+Requires=consul.service haproxy.service
+After=network-online.target consul.service haproxy.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/consul-template -consul-addr=127.0.0.1:8500 -template=/etc/consul-template/haproxy.ctmpl:/etc/haproxy/haproxy.cfg:/usr/local/bin/reload-haproxy.sh
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# ----------------------------------
+# 16. Activar consul-template
+# ----------------------------------
+systemctl daemon-reload
+
+systemctl enable consul-template
+systemctl restart consul-template
+
+# ----------------------------------
+# 17. Verificaciones finales
+# ----------------------------------
+echo ""
+echo "Estado HAProxy:"
+systemctl is-active haproxy
+
+echo ""
+echo "Estado Consul:"
+systemctl is-active consul
+
+echo ""
+echo "Estado consul-template:"
+systemctl is-active consul-template
+
+echo ""
+echo "Miembros Consul:"
+consul members
+
+echo ""
+echo "Backends generados:"
+grep "server web" /etc/haproxy/haproxy.cfg || true
+
+echo ""
 echo "======================================"
 echo " LB APROVISIONADO CORRECTAMENTE"
 echo "======================================"
 
+echo ""
 echo "IP Balanceador:"
 echo "192.168.56.13"
 
@@ -244,7 +324,7 @@ echo "Estadisticas HAProxy:"
 echo "http://192.168.56.13:1936"
 
 echo ""
-echo "Consul:"
-consul members
+echo "Consul Template:"
+echo "Descubrimiento dinamico ACTIVADO"
 
 echo "======================================"
